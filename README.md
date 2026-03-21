@@ -174,7 +174,7 @@ Open an issue or submit a pull request.
 
 ## 👤 Author
 
-**Nish**  
+**Nishita**  
 GitHub: https://github.com/Nish232003
 
 ---
