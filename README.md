@@ -155,6 +155,8 @@ Open the HTML file in your browser.
 
 ## 📸 Screenshots
 <img width="1884" height="875" alt="image" src="https://github.com/user-attachments/assets/06c8e554-680b-4e34-8f36-e0b7eafa2df7" />
+<img width="1900" height="866" alt="image" src="https://github.com/user-attachments/assets/2f574d71-c439-4a15-8e77-de8b71598b54" />
+<img width="1919" height="919" alt="image" src="https://github.com/user-attachments/assets/756c9190-da53-4c40-a7ec-8ae7f7686322" />
 
 
 ```
