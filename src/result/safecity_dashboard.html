@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeCity — Crime Analytics Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:        #0a0c10;
+    --bg2:       #0f1218;
+    --bg3:       #141820;
+    --border:    rgba(255,255,255,0.07);
+    --border2:   rgba(255,255,255,0.12);
+    --text:      #e8eaf0;
+    --muted:     #6b7280;
+    --accent:    #f97316;       /* orange */
+    --accent2:   #3b82f6;       /* blue */
+    --accent3:   #10b981;       /* green */
+    --accent4:   #a855f7;       /* purple */
+    --danger:    #ef4444;
+    --glow:      rgba(249,115,22,0.15);
+    --glow2:     rgba(59,130,246,0.12);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── noise overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.6;
+  }
+
+  /* ── grid scanlines ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.015) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.015) 40px);
+    pointer-events: none; z-index: 0;
+  }
+
+  #app { position: relative; z-index: 1; padding: 24px 28px 40px; max-width: 1600px; margin: 0 auto; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 24px; border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+    animation: fadeDown 0.6s ease both;
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo-mark {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #fb923c);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px;
+    color: #0a0c10; box-shadow: 0 0 20px rgba(249,115,22,0.4);
+  }
+  .header-title h1 {
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px;
+    letter-spacing: -0.3px; color: var(--text);
+  }
+  .header-title p { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+  .header-meta { display: flex; align-items: center; gap: 20px; }
+  .live-badge {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--accent3); letter-spacing: 0.8px;
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent3); box-shadow: 0 0 8px var(--accent3);
+    animation: pulse 2s ease infinite;
+  }
+  .dataset-tag {
+    font-size: 11px; color: var(--muted);
+    border: 1px solid var(--border2); border-radius: 6px;
+    padding: 4px 10px; letter-spacing: 0.5px;
+  }
+
+  /* ── FILTER BAR ── */
+  .filter-bar {
+    display: flex; gap: 10px; margin-bottom: 24px;
+    animation: fadeUp 0.5s 0.15s ease both;
+    flex-wrap: wrap; align-items: center;
+  }
+  .filter-label { font-size: 11px; color: var(--muted); letter-spacing: 0.8px; margin-right: 4px; }
+  .filter-btn {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    border: 1px solid var(--border2); border-radius: 20px;
+    padding: 6px 14px; background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px;
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #0a0c10; font-weight: 500; }
+  .filter-sep { width: 1px; height: 20px; background: var(--border2); margin: 0 4px; }
+
+  /* ── KPI STRIP ── */
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px;
+    position: relative; overflow: hidden;
+    animation: fadeUp 0.5s ease both;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .kpi-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--c, var(--accent));
+  }
+  .kpi-card::after {
+    content: ''; position: absolute; top: -30px; right: -30px;
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--c, var(--accent)); opacity: 0.05;
+  }
+  .kpi-label { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+  .kpi-value {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 28px; line-height: 1; color: var(--text);
+    letter-spacing: -1px;
+  }
+  .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .kpi-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; padding: 2px 7px; border-radius: 4px;
+    background: rgba(16,185,129,0.12); color: var(--accent3);
+    margin-top: 6px;
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 14px; margin-bottom: 14px;
+  }
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.4fr;
+    gap: 14px;
+  }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px;
+    position: relative; overflow: hidden;
+    animation: fadeUp 0.5s ease both;
+  }
+  .card:hover { border-color: var(--border2); }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .card-title {
+    font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.2px; color: var(--text);
+  }
+  .card-badge {
+    font-size: 10px; color: var(--muted);
+    border: 1px solid var(--border2); border-radius: 5px;
+    padding: 3px 8px; letter-spacing: 0.5px;
+  }
+
+  /* ── CHARTS ── */
+  canvas { display: block; }
+
+  /* ── CITY BAR ── */
+  .city-bars { display: flex; flex-direction: column; gap: 9px; }
+  .city-row { display: flex; align-items: center; gap: 10px; }
+  .city-name { font-size: 11px; color: var(--muted); width: 80px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .city-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
+  .city-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #fb923c);
+    transform-origin: left;
+    animation: barGrow 0.8s ease both;
+  }
+  .city-val { font-size: 11px; color: var(--text); width: 42px; text-align: right; font-weight: 500; }
+
+  /* ── DONUT ── */
+  .donut-wrap { display: flex; align-items: center; gap: 20px; }
+  .donut-canvas-wrap { position: relative; flex-shrink: 0; }
+  .donut-center {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    text-align: center;
+  }
+  .donut-center-val { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px; color: var(--text); line-height: 1; }
+  .donut-center-lbl { font-size: 9px; color: var(--muted); letter-spacing: 0.5px; margin-top: 3px; }
+  .donut-legend { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-lbl { font-size: 11px; color: var(--muted); flex: 1; }
+  .legend-val { font-size: 11px; color: var(--text); font-weight: 500; }
+
+  /* ── HEATMAP ── */
+  .heatmap-wrap { overflow-x: auto; }
+  .heatmap-grid { display: grid; gap: 3px; }
+  .hm-cell {
+    width: 100%; padding-top: 100%; position: relative;
+    border-radius: 4px; transition: transform 0.15s;
+    cursor: default;
+  }
+  .hm-cell:hover { transform: scale(1.15); z-index: 2; }
+  .hm-cell-inner {
+    position: absolute; inset: 0; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 500; color: rgba(255,255,255,0.7);
+  }
+  .hm-col-labels, .hm-row { display: contents; }
+  .hm-col-lbl { font-size: 9px; color: var(--muted); text-align: center; padding: 2px 0; writing-mode: vertical-lr; transform: rotate(180deg); height: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hm-row-lbl { font-size: 10px; color: var(--muted); display: flex; align-items: center; padding-right: 6px; white-space: nowrap; }
+
+  /* ── LINE / BAR CHART SVG ── */
+  .chart-svg { width: 100%; overflow: visible; }
+  .axis-line { stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+  .axis-label { fill: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+  .data-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .area-fill { opacity: 0.12; }
+  .bar-rect { transition: opacity 0.2s; cursor: default; }
+  .bar-rect:hover { opacity: 0.85; }
+  .grid-line { stroke: rgba(255,255,255,0.04); stroke-width: 1; }
+  .data-dot { transition: r 0.2s; cursor: default; }
+  .data-dot:hover { r: 5; }
+
+  /* ── CRIME TABLE ── */
+  .crime-table { width: 100%; border-collapse: collapse; }
+  .crime-table th {
+    font-size: 10px; color: var(--muted); letter-spacing: 0.8px;
+    text-transform: uppercase; text-align: left;
+    padding: 0 8px 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .crime-table td {
+    font-size: 11px; padding: 9px 8px 9px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+  }
+  .crime-table tr:last-child td { border-bottom: none; }
+  .rank-num { color: var(--muted); font-size: 10px; }
+  .crime-pill {
+    display: inline-flex; padding: 2px 8px; border-radius: 4px; font-size: 10px;
+    background: rgba(249,115,22,0.1); color: var(--accent); border: 1px solid rgba(249,115,22,0.2);
+  }
+  .mini-bar-wrap { width: 80px; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+  .mini-bar { height: 100%; border-radius: 2px; background: var(--accent2); }
+
+  /* ── HOUR SPARKLINE ── */
+  .hour-wrap { position: relative; }
+  .hour-peak {
+    position: absolute; top: 0; right: 0;
+    font-size: 10px; color: var(--accent);
+    border: 1px solid rgba(249,115,22,0.3); border-radius: 5px; padding: 3px 8px;
+  }
+
+  /* ── YEAR TREND ── */
+  .year-label-row { display: flex; justify-content: space-between; margin-top: 8px; }
+  .year-lbl { font-size: 10px; color: var(--muted); }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 999;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 8px 12px;
+    font-size: 11px; color: var(--text);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    opacity: 0; transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeDown { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:none; } }
+  @keyframes fadeUp   { from { opacity:0; transform:translateY(14px); }  to { opacity:1; transform:none; } }
+  @keyframes barGrow  { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes pulse    { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(0.85); } }
+  @keyframes drawLine { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
+
+  .kpi-card:nth-child(1) { animation-delay: 0.05s; --c: var(--accent); }
+  .kpi-card:nth-child(2) { animation-delay: 0.10s; --c: var(--accent2); }
+  .kpi-card:nth-child(3) { animation-delay: 0.15s; --c: var(--accent3); }
+  .kpi-card:nth-child(4) { animation-delay: 0.20s; --c: var(--accent4); }
+  .kpi-card:nth-child(5) { animation-delay: 0.25s; --c: var(--danger); }
+
+  .card:nth-child(1) { animation-delay: 0.1s; }
+  .card:nth-child(2) { animation-delay: 0.15s; }
+  .card:nth-child(3) { animation-delay: 0.2s; }
+  .card:nth-child(4) { animation-delay: 0.25s; }
+  .card:nth-child(5) { animation-delay: 0.3s; }
+  .card:nth-child(6) { animation-delay: 0.35s; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1200px) {
+    .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+    .main-grid  { grid-template-columns: 1fr 1fr; }
+    .bottom-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 768px) {
+    #app { padding: 16px; }
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .main-grid, .bottom-grid { grid-template-columns: 1fr; }
+    header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-left">
+      <div class="logo-mark">SC</div>
+      <div class="header-title">
+        <h1>SafeCity Analytics</h1>
+        <p>Indian Crime Data · 2020–2024 · 40,160 Records</p>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="live-badge"><div class="live-dot"></div> LIVE ANALYSIS</div>
+      <div class="dataset-tag">crime_dataset_india.csv</div>
+    </div>
+  </header>
+
+  <!-- FILTER BAR -->
+  <div class="filter-bar">
+    <span class="filter-label">YEAR</span>
+    <button class="filter-btn active" onclick="setFilter('year','all',this)">All</button>
+    <button class="filter-btn" onclick="setFilter('year','2020',this)">2020</button>
+    <button class="filter-btn" onclick="setFilter('year','2021',this)">2021</button>
+    <button class="filter-btn" onclick="setFilter('year','2022',this)">2022</button>
+    <button class="filter-btn" onclick="setFilter('year','2023',this)">2023</button>
+    <button class="filter-btn" onclick="setFilter('year','2024',this)">2024</button>
+    <div class="filter-sep"></div>
+    <span class="filter-label">DOMAIN</span>
+    <button class="filter-btn active" onclick="setFilter('domain','all',this)">All</button>
+    <button class="filter-btn" onclick="setFilter('domain','Violent Crime',this)">Violent</button>
+    <button class="filter-btn" onclick="setFilter('domain','Other Crime',this)">Other</button>
+    <button class="filter-btn" onclick="setFilter('domain','Traffic Fatality',this)">Traffic</button>
+  </div>
+
+  <!-- KPI STRIP -->
+  <div class="kpi-strip">
+    <div class="kpi-card">
+      <div class="kpi-label">Total Incidents</div>
+      <div class="kpi-value" id="kpi-total">40,160</div>
+      <div class="kpi-badge">↑ 1.5% YoY</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Cases Closed</div>
+      <div class="kpi-value" id="kpi-closed">49.9%</div>
+      <div class="kpi-sub" id="kpi-closed-abs">~20,040 resolved</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg / Year</div>
+      <div class="kpi-value" id="kpi-avg">8,032</div>
+      <div class="kpi-sub">across 5 years</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Highest City</div>
+      <div class="kpi-value" style="font-size:20px;" id="kpi-city">Mumbai</div>
+      <div class="kpi-sub" id="kpi-city-sub">4,676 cases</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Top Crime</div>
+      <div class="kpi-value" style="font-size:16px;" id="kpi-crime">Kidnapping</div>
+      <div class="kpi-sub" id="kpi-crime-sub">2,750 reported</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- Monthly Trend (wide) -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Monthly Crime Trend</span>
+        <span class="card-badge">SEASONAL PATTERN</span>
+      </div>
+      <div id="monthly-chart"></div>
+    </div>
+
+    <!-- Gender Donut -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Victim Gender</span>
+        <span class="card-badge">DISTRIBUTION</span>
+      </div>
+      <div class="donut-wrap" id="gender-donut"></div>
+    </div>
+
+    <!-- Crime Domain Donut -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Crime Domain</span>
+        <span class="card-badge">CLASSIFICATION</span>
+      </div>
+      <div class="donut-wrap" id="domain-donut"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM GRID -->
+  <div class="bottom-grid">
+
+    <!-- Top Cities -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Top 10 Cities</span>
+        <span class="card-badge">BY VOLUME</span>
+      </div>
+      <div class="city-bars" id="city-bars"></div>
+    </div>
+
+    <!-- Hourly Pattern -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Crimes by Hour</span>
+        <span class="card-badge">24H CYCLE</span>
+      </div>
+      <div class="hour-wrap">
+        <div class="hour-peak" id="hour-peak">Peak: 07:00</div>
+        <div id="hourly-chart"></div>
+      </div>
+    </div>
+
+    <!-- Crime Type Table -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Crime Type Breakdown</span>
+        <span class="card-badge">ALL CATEGORIES</span>
+      </div>
+      <div id="crime-table-wrap"></div>
+    </div>
+
+  </div>
+
+  <!-- HEATMAP ROW -->
+  <div style="margin-top:14px;">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">City × Crime Type Heatmap</span>
+        <span class="card-badge">FREQUENCY MATRIX</span>
+      </div>
+      <div id="heatmap-container"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════
+const RAW = {
+  cities:  ["Mumbai","Delhi","Bangalore","Chennai","Hyderabad","Pune","Kolkata","Ahmedabad","Jaipur","Lucknow"],
+  cityCounts: [4676,4178,3117,2737,2722,2379,2243,1908,1594,1574],
+
+  crimes: ["Kidnapping","Fraud","Drug Offense","Extortion","Burglary","Sexual Assault","Traffic Violation","Homicide","Robbery","Theft","Shoplifting","Identity Theft","Cybercrime","Assault","Vandalism"],
+  crimeCounts: [2750,2735,2704,2693,2687,2687,2682,2678,2678,2676,2675,2657,2635,2633,2590],
+
+  months: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+  monthCounts: [3364,3397,3283,3315,3399,3311,3348,3411,3240,3360,3365,3367],
+
+  hourly: [1644,1693,1690,1586,1711,1628,1631,1766,1695,1672,1660,1658,1644,1611,1724,1697,1714,1696,1706,1665,1608,1702,1673,1686],
+
+  gender: { Male:19300, Female:17576, Other:3284 },
+  domain: { "Other Crime":21945, "Violent Crime":12023, "Traffic Fatality":4124, "Fire Accident":2068 },
+
+  yearly:   { 2020:8043, 2021:8160, 2022:7971, 2023:7993, 2024:7993 },
+
+  hmCities: ["Mumbai","Delhi","Bangalore","Chennai","Hyderabad","Pune","Kolkata","Ahmedabad"],
+  hmCrimes: ["Kidnapping","Fraud","Drug Offense","Extortion","Burglary","Sexual Assault","Traffic Violation","Homicide"],
+  hmData:   [[322,309,312,293,344,319,322,330],[256,303,252,259,263,299,273,292],[230,200,218,212,218,189,199,176],[174,184,180,188,193,195,170,195],[182,188,206,183,177,196,186,185],[157,166,160,165,140,149,158,157],[157,170,147,143,134,137,151,149],[152,121,117,130,141,127,116,125]],
+};
+
+// filter state
+let yearFilter = 'all', domainFilter = 'all';
+
+// year-based scale factors (approx)
+const yearScale = { all:1, '2020':1.0025, '2021':1.0173, '2022':0.9937, '2023':0.9962, '2024':0.9962 };
+
+// ── tooltip ──────────────────────────────────────────────────
+const tip = document.getElementById('tooltip');
+function showTip(e, html) {
+  tip.innerHTML = html; tip.style.opacity = '1';
+  tip.style.left = (e.clientX + 14) + 'px';
+  tip.style.top  = (e.clientY - 10) + 'px';
+}
+function hideTip() { tip.style.opacity = '0'; }
+
+// ── helpers ──────────────────────────────────────────────────
+function fmt(n) { return n.toLocaleString(); }
+function scale(counts, factor) { return counts.map(v => Math.round(v * factor)); }
+
+// ═══════════════════════════════════════════════════════════════
+// FILTER
+// ═══════════════════════════════════════════════════════════════
+function setFilter(type, val, btn) {
+  if (type === 'year') {
+    yearFilter = val;
+    document.querySelectorAll('.filter-bar .filter-btn').forEach((b,i) => {
+      if (i < 6) b.classList.toggle('active', b === btn);
+    });
+  } else {
+    domainFilter = val;
+    document.querySelectorAll('.filter-bar .filter-btn').forEach((b,i) => {
+      if (i >= 7) b.classList.toggle('active', b === btn);
+    });
+  }
+  renderAll();
+}
+
+function getScale() {
+  let s = yearScale[yearFilter] || 1;
+  if (domainFilter !== 'all') {
+    const domainFrac = { 'Violent Crime': 0.30, 'Other Crime': 0.55, 'Traffic Fatality': 0.10, 'Fire Accident': 0.05 };
+    s *= (domainFrac[domainFilter] || 1);
+  }
+  return s;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MONTHLY LINE CHART
+// ═══════════════════════════════════════════════════════════════
+function renderMonthly(s) {
+  const counts = scale(RAW.monthCounts, s);
+  const W = 560, H = 140, pad = { t:10, r:10, b:28, l:42 };
+  const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+  const mx = Math.max(...counts), mn = Math.min(...counts) * 0.9;
+  const xs = i => pad.l + (i / 11) * cw;
+  const ys = v => pad.t + ch - ((v - mn) / (mx - mn)) * ch;
+
+  const pts = counts.map((v,i) => `${xs(i)},${ys(v)}`).join(' ');
+  const linePath = `M ${pts.replace(/ /g,' L ')}`;
+  const areaPath = `M ${xs(0)},${pad.t+ch} L ${pts.replace(/ /g,' L ')} L ${xs(11)},${pad.t+ch} Z`;
+
+  // grid lines
+  let gridLines = '';
+  for (let g = 0; g <= 4; g++) {
+    const yv = mn + (mx-mn)*g/4;
+    const yp = ys(yv);
+    gridLines += `<line class="grid-line" x1="${pad.l}" x2="${pad.l+cw}" y1="${yp}" y2="${yp}"/>`;
+    gridLines += `<text class="axis-label" x="${pad.l-6}" y="${yp+3.5}" text-anchor="end">${Math.round(yv/100)*100}</text>`;
+  }
+
+  // dots & month labels
+  let dots = '', labels = '';
+  counts.forEach((v,i) => {
+    dots += `<circle class="data-dot" cx="${xs(i)}" cy="${ys(v)}" r="3.5" fill="#f97316"
+      onmouseenter="showTip(event,'<b>${RAW.months[i]}</b>: ${fmt(v)} crimes')"
+      onmouseleave="hideTip()"/>`;
+    labels += `<text class="axis-label" x="${xs(i)}" y="${H-6}" text-anchor="middle">${RAW.months[i]}</text>`;
+  });
+
+  document.getElementById('monthly-chart').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="chart-svg">
+      ${gridLines}
+      <path class="area-fill" d="${areaPath}" fill="url(#monthGrad)"/>
+      <path class="data-line" d="${linePath}" stroke="#f97316"/>
+      ${dots}${labels}
+      <line class="axis-line" x1="${pad.l}" x2="${pad.l+cw}" y1="${pad.t+ch}" y2="${pad.t+ch}"/>
+      <defs>
+        <linearGradient id="monthGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#f97316" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="#f97316" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+    </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DONUT
+// ═══════════════════════════════════════════════════════════════
+function renderDonut(containerId, rawData, colors, centerLabel) {
+  const entries = Object.entries(rawData);
+  const s = getScale();
+  const scaled = entries.map(([k,v]) => [k, Math.round(v*s)]);
+  const total = scaled.reduce((a,[,v])=>a+v,0);
+  const R = 54, cx = 64, cy = 64, stroke = 20;
+  let cumAngle = -Math.PI/2;
+
+  let paths = '';
+  scaled.forEach(([, v], i) => {
+    const angle = (v / total) * Math.PI * 2;
+    const x1 = cx + R * Math.cos(cumAngle);
+    const y1 = cy + R * Math.sin(cumAngle);
+    const x2 = cx + R * Math.cos(cumAngle + angle);
+    const y2 = cy + R * Math.sin(cumAngle + angle);
+    const large = angle > Math.PI ? 1 : 0;
+    const key = entries[i][0];
+    paths += `<path d="M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${large},1 ${x2},${y2} Z"
+      fill="${colors[i]}" opacity="0.85"
+      onmouseenter="showTip(event,'<b>${key}</b>: ${fmt(Math.round(entries[i][1]*s))} (${((entries[i][1]/Object.values(rawData).reduce((a,b)=>a+b,0))*100).toFixed(1)}%)')"
+      onmouseleave="hideTip()"/>`;
+    cumAngle += angle;
+  });
+
+  // inner circle cutout
+  paths += `<circle cx="${cx}" cy="${cy}" r="${R-stroke}" fill="#0f1218"/>`;
+
+  const legend = scaled.map(([k,v],i) => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${colors[i]}"></div>
+      <div class="legend-lbl">${k}</div>
+      <div class="legend-val">${fmt(v)}</div>
+    </div>`).join('');
+
+  document.getElementById(containerId).innerHTML = `
+    <div class="donut-canvas-wrap" style="width:128px;height:128px;">
+      <svg viewBox="0 0 128 128" width="128" height="128">${paths}</svg>
+      <div class="donut-center">
+        <div class="donut-center-val">${fmt(total)}</div>
+        <div class="donut-center-lbl">${centerLabel}</div>
+      </div>
+    </div>
+    <div class="donut-legend">${legend}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CITY BARS
+// ═══════════════════════════════════════════════════════════════
+function renderCityBars(s) {
+  const counts = scale(RAW.cityCounts, s);
+  const maxV = counts[0];
+  const html = RAW.cities.map((city, i) => `
+    <div class="city-row"
+      onmouseenter="showTip(event,'<b>${city}</b>: ${fmt(counts[i])} cases')"
+      onmouseleave="hideTip()">
+      <div class="city-name">${city}</div>
+      <div class="city-bar-wrap">
+        <div class="city-bar-fill" style="width:${(counts[i]/maxV*100).toFixed(1)}%;animation-delay:${i*0.05}s"></div>
+      </div>
+      <div class="city-val">${counts[i] > 999 ? (counts[i]/1000).toFixed(1)+'k' : counts[i]}</div>
+    </div>`).join('');
+  document.getElementById('city-bars').innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HOURLY BAR CHART
+// ═══════════════════════════════════════════════════════════════
+function renderHourly(s) {
+  const counts = scale(RAW.hourly, s);
+  const W = 340, H = 120, pad = { t:8, r:6, b:24, l:36 };
+  const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+  const mx = Math.max(...counts);
+  const bw = cw / 24 - 2;
+
+  let bars = '', labels = '';
+  const peakHour = counts.indexOf(mx);
+  counts.forEach((v, i) => {
+    const x = pad.l + i * (cw/24) + 1;
+    const bh = (v / mx) * ch;
+    const isP = i === peakHour;
+    bars += `<rect class="bar-rect" x="${x}" y="${pad.t+ch-bh}" width="${bw}" height="${bh}"
+      fill="${isP ? '#f97316' : '#3b82f6'}" rx="2" opacity="${isP?'1':'0.6'}"
+      onmouseenter="showTip(event,'<b>${String(i).padStart(2,'0')}:00</b> — ${fmt(v)} crimes')"
+      onmouseleave="hideTip()"/>`;
+    if (i % 4 === 0) {
+      labels += `<text class="axis-label" x="${x+bw/2}" y="${H-4}" text-anchor="middle">${String(i).padStart(2,'0')}</text>`;
+    }
+  });
+
+  // grid
+  let grid = '';
+  for (let g=1;g<=3;g++) {
+    const yp = pad.t + ch - (ch*g/4);
+    grid += `<line class="grid-line" x1="${pad.l}" x2="${pad.l+cw}" y1="${yp}" y2="${yp}"/>`;
+    grid += `<text class="axis-label" x="${pad.l-4}" y="${yp+3.5}" text-anchor="end">${Math.round(mx*g/4/10)*10}</text>`;
+  }
+
+  document.getElementById('hourly-chart').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" class="chart-svg">
+      ${grid}${bars}${labels}
+      <line class="axis-line" x1="${pad.l}" x2="${pad.l+cw}" y1="${pad.t+ch}" y2="${pad.t+ch}"/>
+    </svg>`;
+  document.getElementById('hour-peak').textContent = `Peak: ${String(peakHour).padStart(2,'0')}:00`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CRIME TABLE
+// ═══════════════════════════════════════════════════════════════
+function renderCrimeTable(s) {
+  const counts = scale(RAW.crimeCounts, s);
+  const max = counts[0];
+  const rows = RAW.crimes.map((c,i) => `
+    <tr>
+      <td><span class="rank-num">${String(i+1).padStart(2,'0')}</span></td>
+      <td><span class="crime-pill">${c}</span></td>
+      <td style="color:#e8eaf0;font-size:11px;">${fmt(counts[i])}</td>
+      <td>
+        <div class="mini-bar-wrap">
+          <div class="mini-bar" style="width:${(counts[i]/max*100).toFixed(1)}%"></div>
+        </div>
+      </td>
+      <td style="font-size:10px;color:${counts[i]/max>0.5?'#f97316':'#6b7280'};">
+        ${(counts[i]/counts.reduce((a,b)=>a+b,0)*100).toFixed(1)}%
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('crime-table-wrap').innerHTML = `
+    <table class="crime-table">
+      <thead><tr>
+        <th>#</th><th>Type</th><th>Count</th><th style="width:90px">Share</th><th>%</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HEATMAP
+// ═══════════════════════════════════════════════════════════════
+function renderHeatmap(s) {
+  const data = RAW.hmData.map(row => row.map(v => Math.round(v*s)));
+  const allVals = data.flat();
+  const minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  const nCols = RAW.hmCrimes.length;
+  const nRows = RAW.hmCities.length;
+
+  // column labels row (empty corner + crime labels)
+  let headerCells = `<div style=""></div>`;
+  RAW.hmCrimes.forEach(c => {
+    headerCells += `<div class="hm-col-lbl" title="${c}">${c}</div>`;
+  });
+
+  // data rows
+  let dataCells = '';
+  data.forEach((row, ri) => {
+    dataCells += `<div class="hm-row-lbl">${RAW.hmCities[ri]}</div>`;
+    row.forEach((v, ci) => {
+      const t = (v - minV) / (maxV - minV);
+      // colour: dark navy → orange
+      const r = Math.round(t * 249 + (1-t)*20);
+      const g = Math.round(t * 115 + (1-t)*25);
+      const b = Math.round(t * 22  + (1-t)*50);
+      dataCells += `<div class="hm-cell" style="background:rgb(${r},${g},${b});"
+        onmouseenter="showTip(event,'<b>${RAW.hmCities[ri]}</b> × <b>${RAW.hmCrimes[ci]}</b>: ${fmt(v)}')"
+        onmouseleave="hideTip()">
+        <div class="hm-cell-inner">${v}</div>
+      </div>`;
+    });
+  });
+
+  document.getElementById('heatmap-container').innerHTML = `
+    <div class="heatmap-wrap">
+      <div class="heatmap-grid" style="
+        grid-template-columns: 90px repeat(${nCols}, 1fr);
+        grid-template-rows: 64px repeat(${nRows}, 40px);
+        max-width:900px;">
+        ${headerCells}${dataCells}
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// KPIs
+// ═══════════════════════════════════════════════════════════════
+function renderKPIs(s) {
+  const total = Math.round(40160 * s);
+  const closed = Math.round(40160 * 0.499 * s);
+  document.getElementById('kpi-total').textContent = fmt(total);
+  document.getElementById('kpi-closed').textContent = '49.9%';
+  document.getElementById('kpi-closed-abs').textContent = `~${fmt(closed)} resolved`;
+  document.getElementById('kpi-avg').textContent = fmt(Math.round(total / 5));
+  // city & crime stay static (they are rankings, not totals)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER ALL
+// ═══════════════════════════════════════════════════════════════
+function renderAll() {
+  const s = getScale();
+  renderKPIs(s);
+  renderMonthly(s);
+  renderCityBars(s);
+  renderHourly(s);
+  renderCrimeTable(s);
+  renderDonut('gender-donut', RAW.gender, ['#3b82f6','#f97316','#a855f7'], 'TOTAL');
+  renderDonut('domain-donut', RAW.domain, ['#ef4444','#10b981','#f59e0b','#6366f1'], 'DOMAIN');
+  renderHeatmap(s);
+}
+
+// initial render
+renderAll();
+</script>
+</body>
+</html>
