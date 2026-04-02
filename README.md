@@ -153,14 +153,12 @@ Open the HTML file in your browser.
 
 ---
 
-## 📸 Screenshots (Optional)
+## 📸 Screenshots
+<img width="1884" height="875" alt="image" src="https://github.com/user-attachments/assets/06c8e554-680b-4e34-8f36-e0b7eafa2df7" />
 
-You can add images like:
 
 ```
-![Crime by City](images/city_crime.png)
-![Heatmap](images/heatmap.png)
-![Monthly Trends](images/monthly_trends.png)
+
 ```
 
 ---
